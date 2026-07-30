@@ -1,0 +1,583 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Contacts API!",
+    "description": "",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com/v1",
+      "description": ""
+    },
+    {
+      "url": "https://staging-api.example.com/v1",
+      "description": ""
+    }
+  ],
+  "paths": {
+    "/contacts": {
+      "get": {
+        "summary": "Get all contacts",
+        "description": "",
+        "operationId": "getContacts",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Contact"
+                      }
+                    },
+                    "pagination": {
+                      "$ref": "#/components/schemas/Pagination"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new contact",
+        "description": "",
+        "operationId": "createContact",
+        "tags": ["Contacts"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/contacts/{ContactId}": {
+      "get": {
+        "summary": "Get a contact by ID",
+        "description": "",
+        "operationId": "getContactById",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContactId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update a contact",
+        "description": "",
+        "operationId": "updateContact",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContactId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a contact",
+        "description": "",
+        "operationId": "deleteContact",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContactId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "schema": {
+            "type": "string"
+          },
+          "name": "ContactId",
+          "in": "path",
+          "required": true
+        }
+      ]
+    }
+  },
+  "components": {
+    "schemas": {
+      "Contact": {
+        "type": "object",
+        "required": ["id", "firstName", "lastName", "email"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "firstName": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "John"
+          },
+          "lastName": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "Doe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 100,
+            "description": "",
+            "example": "john.doe@example.com"
+          },
+          "phoneNumbers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhoneNumber"
+            },
+            "description": ""
+          },
+          "homeAddress": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "workAddress": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "",
+            "example": "2023-01-15T10:30:00Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "",
+            "example": "2023-01-20T14:45:00Z"
+          }
+        }
+      },
+      "ContactInput": {
+        "type": "object",
+        "required": ["firstName", "lastName", "email"],
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "John"
+          },
+          "lastName": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "Doe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 100,
+            "description": "",
+            "example": "john.doe@example.com"
+          },
+          "phoneNumbers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhoneNumberInput"
+            },
+            "description": ""
+          },
+          "homeAddress": {
+            "$ref": "#/components/schemas/AddressInput"
+          },
+          "workAddress": {
+            "$ref": "#/components/schemas/AddressInput"
+          }
+        }
+      },
+      "PhoneNumber": {
+        "type": "object",
+        "required": ["number", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": ""
+          },
+          "number": {
+            "type": "string",
+            "pattern": "^\\+?[1-9]\\d{1,14}$",
+            "description": "",
+            "example": "+1234567890"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["mobile", "home", "work", "other"],
+            "description": "",
+            "example": "mobile"
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "default": false,
+            "description": ""
+          }
+        }
+      },
+      "PhoneNumberInput": {
+        "type": "object",
+        "required": ["number", "type"],
+        "properties": {
+          "number": {
+            "type": "string",
+            "pattern": "^\\+?[1-9]\\d{1,14}$",
+            "description": "",
+            "example": "+1234567890"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["mobile", "home", "work", "other"],
+            "description": "",
+            "example": "mobile"
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "default": false,
+            "description": ""
+          }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": ""
+          },
+          "street": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "",
+            "example": "123 Main Street"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "New York"
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "NY"
+          },
+          "postalCode": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "",
+            "example": "10001"
+          },
+          "country": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "United States"
+          }
+        }
+      },
+      "AddressInput": {
+        "type": "object",
+        "properties": {
+          "street": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "",
+            "example": "123 Main Street"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "New York"
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "NY"
+          },
+          "postalCode": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "",
+            "example": "10001"
+          },
+          "country": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "",
+            "example": "United States"
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "description": ""
+          },
+          "limit": {
+            "type": "integer",
+            "description": ""
+          },
+          "total": {
+            "type": "integer",
+            "description": ""
+          },
+          "totalPages": {
+            "type": "integer",
+            "description": ""
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": ""
+              },
+              "message": {
+                "type": "string",
+                "description": ""
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "ContactId": {
+        "name": "contactId",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Contacts",
+      "description": ""
+    }
+  ]
+}
