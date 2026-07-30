@@ -372,6 +372,8 @@ runs:
       with:
         name: openapi-semantic-review
         path: .semantic-review/
+        # .semantic-review is a dotfile directory; without this the upload is empty.
+        include-hidden-files: true
         if-no-files-found: warn
         retention-days: 14
 
