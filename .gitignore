@@ -1,0 +1,11 @@
+# Produced by the semantic lint gate at run time
+.semantic-review/
+*-fixed-ruleset.yaml
+*-fixed-ruleset.yml
+*-fixed-ruleset.json
+*-semantically-linted.yaml
+*-semantically-linted.yml
+*-semantically-linted.json
+
+.DS_Store
+node_modules/

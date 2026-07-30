@@ -1,0 +1,391 @@
+name: "OpenAPI Semantic Lint Gate"
+description: >-
+  Runs the openapi-semantic-review Claude skill against every OpenAPI
+  specification changed in a pull request and fails when semantic errors remain.
+author: "apiglue"
+
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  anthropic-api-key:
+    description: "Anthropic API key used to run the skill."
+    required: true
+  github-token:
+    description: "Token used to read the PR diff and post the findings comment."
+    required: false
+    default: ${{ github.token }}
+  spec-extensions:
+    description: "Comma-separated file extensions considered candidate specs."
+    required: false
+    default: "yaml,yml,json"
+  spec-paths:
+    description: >-
+      Optional newline-separated list of explicit spec paths. When set, changed-file
+      detection is skipped and exactly these files are reviewed.
+    required: false
+    default: ""
+  fail-on:
+    description: "'errors' (default) or 'errors+warnings'."
+    required: false
+    default: "errors"
+  comment:
+    description: "Post/update a sticky findings comment on the pull request."
+    required: false
+    default: "true"
+  upload-artifact:
+    description: "Upload the review report and the -semantically-linted spec copies."
+    required: false
+    default: "true"
+  model:
+    description: "Claude model used for the review."
+    required: false
+    default: "claude-sonnet-5"
+  plugin-marketplace:
+    description: "Git URL of the marketplace holding the api-ai-toolkit plugin."
+    required: false
+    default: "https://github.com/apiglue/claude-marketplace-api-governance.git"
+  plugin:
+    description: "Plugin to install, as plugin@marketplace."
+    required: false
+    default: "api-ai-toolkit@apiglue-api-governance"
+  skill:
+    description: "Skill invoked per specification."
+    required: false
+    default: "api-ai-toolkit:openapi-semantic-review"
+
+outputs:
+  specs:
+    description: "Newline-separated list of reviewed spec files."
+    value: ${{ steps.detect.outputs.specs }}
+  error-count:
+    description: "Number of SEM errors found across all reviewed specs."
+    value: ${{ steps.verdict.outputs.error-count }}
+  warning-count:
+    description: "Number of SEM warnings found across all reviewed specs."
+    value: ${{ steps.verdict.outputs.warning-count }}
+  passed:
+    description: "'true' when the gate passed (including when no spec changed)."
+    value: ${{ steps.verdict.outputs.passed }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect changed OpenAPI specifications
+      id: detect
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        EXTENSIONS: ${{ inputs.spec-extensions }}
+        EXPLICIT_PATHS: ${{ inputs.spec-paths }}
+      run: |
+        set -euo pipefail
+        mkdir -p .semantic-review
+
+        candidates_file="$(mktemp)"
+
+        if [ -n "${EXPLICIT_PATHS//[[:space:]]/}" ]; then
+          printf '%s\n' "$EXPLICIT_PATHS" | sed '/^[[:space:]]*$/d' > "$candidates_file"
+        else
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo "::error::No pull_request context found. Provide 'spec-paths' when running outside a PR."
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || \
+            git fetch --no-tags origin "+refs/heads/*:refs/remotes/origin/*"
+          # Added, copied, modified, renamed — deletions cannot be reviewed.
+          git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" > "$candidates_file"
+        fi
+
+        # Keep only files whose extension is a candidate and whose content declares
+        # an OpenAPI/Swagger document: an unindented YAML key, or a JSON member
+        # (which may sit anywhere on a minified single line).
+        ext_pattern="$(printf '%s' "$EXTENSIONS" | tr ',' '|' | tr -d '[:space:]')"
+        : > .semantic-review/specs.txt
+        while IFS= read -r file; do
+          [ -n "$file" ] || continue
+          [ -f "$file" ] || continue
+          printf '%s' "$file" | grep -Eiq "\.(${ext_pattern})$" || continue
+          if grep -Eq '^(openapi|swagger)[[:space:]]*:|"(openapi|swagger)"[[:space:]]*:' "$file"; then
+            printf '%s\n' "$file" >> .semantic-review/specs.txt
+          fi
+        done < "$candidates_file"
+
+        count="$(wc -l < .semantic-review/specs.txt | tr -d '[:space:]')"
+        echo "found=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        {
+          echo "specs<<__EOF__"
+          cat .semantic-review/specs.txt
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
+
+        if [ "$count" -eq 0 ]; then
+          echo "No OpenAPI specification changed in this pull request — gate skipped."
+        else
+          echo "Reviewing $count specification(s):"
+          cat .semantic-review/specs.txt
+        fi
+
+    - name: Set up Node.js
+      if: steps.detect.outputs.found == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Run semantic review
+      if: steps.detect.outputs.found == 'true'
+      uses: anthropics/claude-code-action@v1
+      with:
+        anthropic_api_key: ${{ inputs.anthropic-api-key }}
+        github_token: ${{ inputs.github-token }}
+        track_progress: false
+        plugin_marketplaces: ${{ inputs.plugin-marketplace }}
+        plugins: ${{ inputs.plugin }}
+        claude_args: >-
+          --model ${{ inputs.model }}
+          --max-turns 80
+          --allowedTools "Read,Write,Edit,Glob,Grep,Bash,Skill"
+        prompt: |
+          You are running as a non-interactive pull-request merge gate. Never ask the
+          user questions — if a skill prompts for a decision, apply the default stated
+          below and keep going.
+
+          The file `.semantic-review/specs.txt` lists the OpenAPI specification files
+          changed in this pull request, one path per line.
+
+          For EACH path in that file, in the order listed:
+
+          1. Invoke the `${{ inputs.skill }}` skill with that path as its argument and
+             let it run to completion, following the skill exactly as written.
+          2. That skill runs the `openapi-spectral-fix` skill from the same plugin as
+             its first step. If that skill asks whether to also fix warnings, the
+             answer is **No** — do not fix Spectral warnings, just continue.
+
+          Do not modify any file that was already tracked in the repository. The skills
+          only ever write new `-fixed-ruleset` and `-semantically-linted` copies, which
+          is fine. Do not create commits, do not push, and do not post pull-request
+          comments — the workflow handles reporting.
+
+          When every specification has been reviewed, write exactly two files:
+
+          A) `.semantic-review/result.json` — valid JSON, this exact shape, no prose,
+             no markdown fences:
+
+          {
+            "specs": [
+              {
+                "file": "<path exactly as listed in specs.txt>",
+                "reviewInput": "<the -fixed-ruleset path, or null if the skill stopped early>",
+                "output": "<the -semantically-linted path, or null if not produced>",
+                "status": "reviewed" | "skipped",
+                "statusReason": "<short reason when status is skipped, else null>",
+                "errors": [
+                  {
+                    "rule": "SEM-001",
+                    "location": "<the Location cell from the skill's table>",
+                    "recommendation": "<the Recommendation cell, verbatim>",
+                    "rationale": "<the Rationale cell, verbatim>"
+                  }
+                ],
+                "warnings": [ { "rule": "...", "location": "...", "recommendation": "...", "rationale": "..." } ]
+              }
+            ]
+          }
+
+             `errors` holds only SEM-001…SEM-006 findings and `warnings` only
+             SEM-007…SEM-014 findings, copied verbatim from the skill's own report —
+             never re-worded, never added to, never filtered. Use empty arrays when a
+             specification has no findings of that severity. If a skill stopped early
+             (missing file, invalid spec, Spectral unavailable), set `status` to
+             `"skipped"`, explain in `statusReason`, and use empty arrays.
+
+          B) `.semantic-review/report.md` — the human-readable report: for each
+             specification a `### <path>` heading followed by that specification's
+             findings table exactly as the skill printed it, or the line
+             `No findings — the specification passed semantic review.`
+
+          Both files are required. Write them even when there are zero findings.
+
+    - name: Evaluate gate
+      id: verdict
+      if: always() && steps.detect.outputs.found == 'true'
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -f .semantic-review/result.json ]; then
+          echo "::error::The semantic review did not produce .semantic-review/result.json — treating the gate as failed."
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          echo "error-count=" >> "$GITHUB_OUTPUT"
+          echo "warning-count=" >> "$GITHUB_OUTPUT"
+          echo "reason=no-result" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if ! jq -e . .semantic-review/result.json > /dev/null 2>&1; then
+          echo "::error::.semantic-review/result.json is not valid JSON — treating the gate as failed."
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          echo "error-count=" >> "$GITHUB_OUTPUT"
+          echo "warning-count=" >> "$GITHUB_OUTPUT"
+          echo "reason=bad-result" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        errors="$(jq '[.specs[].errors[]] | length' .semantic-review/result.json)"
+        warnings="$(jq '[.specs[].warnings[]] | length' .semantic-review/result.json)"
+        skipped="$(jq '[.specs[] | select(.status == "skipped")] | length' .semantic-review/result.json)"
+
+        blocking="$errors"
+        if [ "$FAIL_ON" = "errors+warnings" ]; then
+          blocking=$((errors + warnings))
+        fi
+
+        passed=true
+        reason=ok
+        if [ "$blocking" -gt 0 ]; then
+          passed=false
+          reason=findings
+        fi
+        if [ "$skipped" -gt 0 ]; then
+          passed=false
+          reason=skipped
+        fi
+
+        echo "error-count=$errors" >> "$GITHUB_OUTPUT"
+        echo "warning-count=$warnings" >> "$GITHUB_OUTPUT"
+        echo "skipped-count=$skipped" >> "$GITHUB_OUTPUT"
+        echo "passed=$passed" >> "$GITHUB_OUTPUT"
+        echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+    - name: Build report
+      id: report
+      if: always() && steps.detect.outputs.found == 'true'
+      shell: bash
+      env:
+        PASSED: ${{ steps.verdict.outputs.passed }}
+        REASON: ${{ steps.verdict.outputs.reason }}
+        ERRORS: ${{ steps.verdict.outputs.error-count }}
+        WARNINGS: ${{ steps.verdict.outputs.warning-count }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -euo pipefail
+        out=.semantic-review/comment.md
+
+        {
+          echo "<!-- openapi-semantic-lint-gate -->"
+          echo "## OpenAPI semantic lint gate"
+          echo
+          case "$REASON" in
+            ok)
+              if [ "${WARNINGS:-0}" -gt 0 ]; then
+                echo "✅ **Passed** — 0 errors, ${WARNINGS} warning(s). Warnings are advisory and do not block the merge."
+              else
+                echo "✅ **Passed** — no semantic findings."
+              fi
+              ;;
+            findings)
+              echo "❌ **Blocked** — ${ERRORS} error(s), ${WARNINGS} warning(s). Gate fails on: \`${FAIL_ON}\`."
+              echo
+              echo "Resolve the errors below and push again."
+              ;;
+            skipped)
+              echo "❌ **Blocked** — the review could not complete for at least one specification. See the run log."
+              ;;
+            no-result|bad-result)
+              echo "❌ **Blocked** — the review did not produce a usable result file. See the run log."
+              ;;
+          esac
+          echo
+          echo "### Reviewed specifications"
+          echo
+          while IFS= read -r f; do [ -n "$f" ] && echo "- \`$f\`"; done < .semantic-review/specs.txt
+          echo
+          if [ -f .semantic-review/report.md ]; then
+            cat .semantic-review/report.md
+          fi
+          echo
+          echo "<sub>Generated by the \`openapi-semantic-review\` skill.</sub>"
+        } > "$out"
+
+        # GitHub comments cap at 65536 characters.
+        if [ "$(wc -c < "$out")" -gt 60000 ]; then
+          head -c 60000 "$out" > "${out}.trunc"
+          printf '\n\n_Report truncated — see the workflow run for the full output._\n' >> "${out}.trunc"
+          mv "${out}.trunc" "$out"
+        fi
+
+        cat "$out" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment on pull request
+      if: always() && steps.detect.outputs.found == 'true' && inputs.comment == 'true' && github.event.pull_request.number != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        marker='<!-- openapi-semantic-lint-gate -->'
+
+        existing="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+          --jq "[.[] | select(.body | startswith(\"${marker}\"))] | first | .id // empty")"
+
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" \
+            -F body=@.semantic-review/comment.md > /dev/null
+          echo "Updated comment ${existing}."
+        else
+          gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
+            -F body=@.semantic-review/comment.md > /dev/null
+          echo "Created findings comment."
+        fi
+
+    - name: Collect artifacts
+      if: always() && steps.detect.outputs.found == 'true' && inputs.upload-artifact == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p .semantic-review/specs
+        while IFS= read -r f; do
+          [ -n "$f" ] || continue
+          dir="$(dirname "$f")"
+          base="$(basename "$f")"
+          stem="${base%.*}"
+          ext="${base##*.}"
+          for suffix in fixed-ruleset semantically-linted; do
+            produced="${dir}/${stem}-${suffix}.${ext}"
+            if [ -f "$produced" ]; then
+              mkdir -p ".semantic-review/specs/${dir}"
+              cp "$produced" ".semantic-review/specs/${dir}/"
+            fi
+          done
+        done < .semantic-review/specs.txt
+
+    - name: Upload review artifacts
+      if: always() && steps.detect.outputs.found == 'true' && inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: openapi-semantic-review
+        path: .semantic-review/
+        if-no-files-found: warn
+        retention-days: 14
+
+    - name: Fail when the gate did not pass
+      if: always() && steps.detect.outputs.found == 'true' && steps.verdict.outputs.passed != 'true'
+      shell: bash
+      env:
+        REASON: ${{ steps.verdict.outputs.reason }}
+        ERRORS: ${{ steps.verdict.outputs.error-count }}
+        WARNINGS: ${{ steps.verdict.outputs.warning-count }}
+      run: |
+        case "$REASON" in
+          findings) echo "::error::Semantic lint gate failed — ${ERRORS} error(s), ${WARNINGS} warning(s)." ;;
+          skipped)  echo "::error::Semantic lint gate failed — at least one specification could not be reviewed." ;;
+          *)        echo "::error::Semantic lint gate failed — the review produced no usable result." ;;
+        esac
+        exit 1
