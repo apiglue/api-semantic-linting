@@ -3,7 +3,6 @@ description: >-
   Runs the openapi-semantic-review Claude skill against every OpenAPI
   specification changed in a pull request and fails when semantic errors remain.
 author: "apiglue"
-
 branding:
   icon: "check-circle"
   color: "purple"
@@ -372,6 +371,8 @@ runs:
       with:
         name: openapi-semantic-review
         path: .semantic-review/
+        # .semantic-review is a dotfile directory; without this the upload is empty.
+        include-hidden-files: true
         if-no-files-found: warn
         retention-days: 14
 
