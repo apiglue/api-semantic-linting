@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Contacts API",
-    "description": "A contacts API that satisfies every structural lint rule while violating a large number of REST design conventions. Used to exercise the semantic reviewer.",
+    "description": "A contacts API that satisfies every structural lint rule while violating a large number of REST design conventions. Used to exercise the semantic reviewer..",
     "version": "1.0.0",
     "contact": {
       "name": "API Support",
