@@ -108,3 +108,20 @@ This repository's own workflow lints the specifications under `apis/` with both 
           typesafe-api-key: ${{ secrets.TYPESAFE_API_KEY }}
           spec-directory: apis   # optional
 ```
+
+## Comparison
+
+Both gates on [`apis/openapi-semantic-traps.json`](apis/openapi-semantic-traps.json) in [PR #2](https://github.com/apiglue/api-semantic-linting/pull/2):
+
+| | Semantic lint (Claude) | Semantic lint (Jev) |
+|---|---|---|
+| Result | ❌ Blocked | ❌ Blocked |
+| Time shown in comment | 4m 34s | 0m 02s |
+| Whole job, per GitHub | 4m 42s | 11s |
+| Rules fired | 13 | the same 13 |
+| Table rows | 20, one per location | 13, one per rule |
+
+- **Same verdict on every rule.** Both flagged `SEM-001`…`SEM-011`, `SEM-013` and `SEM-014`, and both passed `SEM-012`. Jev's probabilities were all between 0.90 and 1.00; the lowest were `SEM-013` (0.90), `SEM-011` (0.91) and `SEM-005` (0.93).
+- **Jev is about 140× faster.** It makes one API call per spec, and TypeSafe charges for input tokens only.
+- **Claude gives exact locations** (`GET /getContactList`, `totalAmount`), recommendations written for each finding, and a corrected copy of the spec. Jev only says which rules fired.
+- **`SEM-007` severity is inconsistent.** The skill marks it as an error, which is how Jev counts it. The Claude gate's prompt treats only `SEM-001`…`SEM-006` as errors, so its comment header showed "9 error(s), 11 warning(s)" while its footer showed "11 · 9".
