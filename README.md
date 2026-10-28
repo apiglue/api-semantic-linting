@@ -54,6 +54,7 @@ With that check required, a pull request cannot be merged until the semantic rev
 | `github-token` | `${{ github.token }}` | Reads the PR diff and posts the findings comment. |
 | `spec-extensions` | `yaml,yml,json` | Extensions considered candidate specifications. |
 | `spec-paths` | `""` | Newline-separated explicit paths. Set this to bypass change detection (e.g. to review a fixed set of specs on a schedule). |
+| `spec-directory` | `""` | Only review changed specs under this directory (e.g. `apis`). Empty reviews the whole repository. |
 | `fail-on` | `errors` | `errors`, or `errors+warnings` for a stricter gate. |
 | `comment` | `true` | Post/update the sticky PR comment. |
 | `upload-artifact` | `true` | Upload the report and corrected spec copies. |
@@ -95,4 +96,15 @@ The gate also fails if the review cannot complete (invalid spec, Spectral unavai
 
 ## Local example
 
-`examples/orders-api.yaml` is a specification written to pass the full catalog. Editing it in a pull request against this repository exercises the gate end to end — for a red run, add a `requestBody` to the `GET /orders` operation (`SEM-001`).
+This repository's own workflow lints the specifications under `apis/` with both jobs. `apis/openapi-semantic-traps.json` passes every structural lint rule while violating many semantic rules, so editing it in a pull request exercises both gates end to end with a red run.
+
+## Jev variant
+
+`jev/` is a second action that scores the same `SEM-001`…`SEM-014` catalog with TypeSafe's Jev model instead of Claude. It sends one request per changed spec, with the spec as `state` and the 14 two-level Score questions from `jev/questions.json`. `jev/semantic_score.py` then combines the answers into a weighted compliance score and fails the job when an error rule fires.
+
+```yaml
+      - uses: apiglue/api-semantinc-linting/jev@v1
+        with:
+          typesafe-api-key: ${{ secrets.TYPESAFE_API_KEY }}
+          spec-directory: apis   # optional
+```

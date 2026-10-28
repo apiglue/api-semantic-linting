@@ -1,0 +1,72 @@
+{
+  "SEM-001": {
+    "location": "GET/HEAD/DELETE operations",
+    "recommendation": "Remove the `requestBody` from GET, HEAD and DELETE operations (move inputs to query/path parameters or reconsider the method)",
+    "rationale": "RFC 9110: request bodies on GET/HEAD/DELETE have no defined semantics; many proxies, caches, and client SDKs drop or reject them"
+  },
+  "SEM-002": {
+    "location": "204 responses",
+    "recommendation": "Remove the `content` block from `204` responses",
+    "rationale": "RFC 9110: 204 No Content must not carry a body; clients and gateways that enforce this will fail"
+  },
+  "SEM-003": {
+    "location": "components.securitySchemes",
+    "recommendation": "Define at least one scheme in `components.securitySchemes` and apply it via top-level `security`",
+    "rationale": "An API with no declared security scheme is documented as fully anonymous — a known security trap; even public APIs should state auth explicitly"
+  },
+  "SEM-004": {
+    "location": "query parameters",
+    "recommendation": "Move credential or secret query parameters (e.g. `api_key`, `password`, `token`) to a request header or request body",
+    "rationale": "Credentials and secrets in query strings leak into server logs, browser history, and referrer headers (OWASP API Security)"
+  },
+  "SEM-005": {
+    "location": "operations without 4xx/default",
+    "recommendation": "Add at least one 4xx (or `default`) error response to every operation that documents only successes",
+    "rationale": "Consumers cannot handle failures that are not documented; every operation can at minimum fail validation or authorization"
+  },
+  "SEM-006": {
+    "location": "GET/HEAD operations",
+    "recommendation": "Change `201` responses on GET and HEAD operations to `200`",
+    "rationale": "201 Created signals resource creation; returning it from a read operation misleads clients and tooling"
+  },
+  "SEM-007": {
+    "location": "paths",
+    "recommendation": "Consider renaming verb path segments (e.g. `getUsers`, `delete-order`) to nouns and letting the HTTP method carry the action",
+    "rationale": "REST models resources as nouns; verbs in paths duplicate the HTTP method and create redundant endpoints over time"
+  },
+  "SEM-008": {
+    "location": "POST operations",
+    "recommendation": "Consider returning `201` (with a `Location` header) instead of `200` from POST operations that create a resource",
+    "rationale": "201 tells clients a resource was created and where to find it; 200 is ambiguous for creation. Skip if this POST is an action/search, not a create"
+  },
+  "SEM-009": {
+    "location": "GET collection operations",
+    "recommendation": "Consider adding pagination parameters (e.g. `limit`/`offset` or `cursor`) to GET collection operations",
+    "rationale": "Unbounded collection responses degrade as data grows; retrofitting pagination later is a breaking change"
+  },
+  "SEM-010": {
+    "location": "components.schemas",
+    "recommendation": "Consider representing monetary properties as a string or integer of minor units instead of `float`/`double`",
+    "rationale": "Binary floating point cannot represent decimal currency exactly; rounding errors accumulate in monetary arithmetic"
+  },
+  "SEM-011": {
+    "location": "components.schemas",
+    "recommendation": "Consider aligning property naming to a single convention across `components.schemas`",
+    "rationale": "Mixed naming conventions force consumers to special-case fields and suggest the API grew without a style guide"
+  },
+  "SEM-012": {
+    "location": "secured operations",
+    "recommendation": "Consider documenting `401` and/or `403` responses on secured operations",
+    "rationale": "Secured operations can always fail authentication or authorization; documenting it lets clients handle it uniformly"
+  },
+  "SEM-013": {
+    "location": "components.schemas",
+    "recommendation": "Consider defining `properties` or explicitly setting `additionalProperties` on free-form object schemas",
+    "rationale": "A fully free-form object gives consumers and codegen tools nothing to validate or generate against"
+  },
+  "SEM-014": {
+    "location": "servers",
+    "recommendation": "Consider adding an explicit version (e.g. `/v1`) to the server URL or base path",
+    "rationale": "Without a versioning scheme, the first breaking change forces an ad-hoc migration strategy on every consumer"
+  }
+}

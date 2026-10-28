@@ -1,0 +1,212 @@
+name: "OpenAPI Semantic Lint Gate (Jev)"
+description: >-
+  Scores every OpenAPI specification changed in a pull request against the
+  openapi-semantic-review rule catalog with TypeSafe's Jev model, and fails when
+  an error rule fires.
+author: "apiglue"
+
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  typesafe-api-key:
+    description: "TypeSafe API key used to call Jev."
+    required: true
+  spec-directory:
+    description: "Only review changed specs under this directory. Empty reviews the whole repository."
+    required: false
+    default: ""
+  model:
+    description: "Jev model used for the review."
+    required: false
+    default: "jev-1.14.0"
+  github-token:
+    description: "Token used to read the PR diff and post the findings comment."
+    required: false
+    default: ${{ github.token }}
+  comment:
+    description: "Post/update a sticky findings comment on the pull request."
+    required: false
+    default: "true"
+
+outputs:
+  specs:
+    description: "Newline-separated list of reviewed spec files."
+    value: ${{ steps.detect.outputs.specs }}
+  error-count:
+    description: "Number of error rules that fired across all reviewed specs."
+    value: ${{ steps.report.outputs.error-count }}
+  warning-count:
+    description: "Number of warning rules that fired across all reviewed specs."
+    value: ${{ steps.report.outputs.warning-count }}
+  passed:
+    description: "'true' when no error rule fired and every spec was scored (including when no spec changed)."
+    value: ${{ steps.report.outputs.passed || 'true' }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect changed OpenAPI specifications
+      id: detect
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        SPEC_DIR: ${{ inputs.spec-directory }}
+      run: |
+        set -euo pipefail
+        if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+          echo "::error::No pull_request context found."
+          exit 1
+        fi
+        mkdir -p .jev-review
+        echo "started-at=$(date +%s)" >> "$GITHUB_OUTPUT"
+        : > .jev-review/specs.txt
+        git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true
+        # Added, copied, modified, renamed — deletions cannot be reviewed.
+        git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" | while IFS= read -r file; do
+          [ -f "$file" ] || continue
+          if [ -n "$SPEC_DIR" ]; then
+            case "$file" in "${SPEC_DIR%/}"/*) ;; *) continue ;; esac
+          fi
+          printf '%s' "$file" | grep -Eiq '\.(yaml|yml|json)$' || continue
+          if grep -Eq '^(openapi|swagger)[[:space:]]*:|"(openapi|swagger)"[[:space:]]*:' "$file"; then
+            printf '%s\n' "$file" >> .jev-review/specs.txt
+          fi
+        done
+
+        count="$(wc -l < .jev-review/specs.txt | tr -d '[:space:]')"
+        echo "found=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        {
+          echo "specs<<__EOF__"
+          cat .jev-review/specs.txt
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
+        if [ "$count" -eq 0 ]; then
+          echo "No OpenAPI specification changed in this pull request — gate skipped."
+        else
+          echo "Reviewing $count specification(s):"
+          cat .jev-review/specs.txt
+        fi
+
+    - name: Score specifications with Jev
+      if: steps.detect.outputs.found == 'true'
+      shell: bash
+      env:
+        TYPESAFE_API_KEY: ${{ inputs.typesafe-api-key }}
+        MODEL: ${{ inputs.model }}
+        QUESTIONS: ${{ github.action_path }}/questions.json
+        SCORER: ${{ github.action_path }}/semantic_score.py
+      run: |
+        set -euo pipefail
+        if [ -z "${TYPESAFE_API_KEY:-}" ]; then
+          echo "::error::typesafe-api-key is empty."
+          exit 1
+        fi
+
+        # A spec that cannot be scored is recorded in error-N.txt and the loop moves on;
+        # the report step turns it into a blocked gate.
+        i=0
+        while IFS= read -r spec; do
+          i=$((i + 1))
+          request=".jev-review/request-$i.json"
+          response=".jev-review/response-$i.json"
+          result=".jev-review/result-$i.json"
+          echo "::group::$spec"
+
+          # yq reads YAML and JSON alike; the spec becomes the request's state.
+          if ! yq -o=json '.' "$spec" > ".jev-review/spec-$i.json" 2> ".jev-review/error-$i.txt"; then
+            echo "::error file=$spec::Could not parse the specification."
+            echo "::endgroup::"
+            continue
+          fi
+          jq --slurpfile spec ".jev-review/spec-$i.json" --arg model "$MODEL" \
+            '.model = $model | .state = $spec[0]' "$QUESTIONS" > "$request"
+
+          if ! curl --silent --show-error --fail-with-body \
+            --request POST \
+            --url https://api.typesafe.ai/v1/systemone \
+            --header "Authorization: Bearer $TYPESAFE_API_KEY" \
+            --header 'Content-Type: application/json' \
+            --data-binary "@$request" \
+            --output "$response" 2> ".jev-review/error-$i.txt"; then
+            { echo "TypeSafe API call failed."; cat "$response" 2>/dev/null || true; } >> ".jev-review/error-$i.txt"
+            echo "::error file=$spec::TypeSafe API call failed: $(head -c 500 ".jev-review/error-$i.txt")"
+            echo "::endgroup::"
+            continue
+          fi
+
+          status=0
+          python3 "$SCORER" "$request" --response "$response" > "$result" 2> ".jev-review/error-$i.txt" || status=$?
+          if [ "$status" -gt 1 ]; then
+            rm -f "$result"
+            echo "::error file=$spec::Could not score the Jev response."
+          else
+            rm -f ".jev-review/error-$i.txt"
+            cat "$result"
+          fi
+          echo "::endgroup::"
+        done < .jev-review/specs.txt
+
+    - name: Build report
+      id: report
+      if: always() && steps.detect.outputs.found == 'true'
+      shell: bash
+      env:
+        REPORTER: ${{ github.action_path }}/report.py
+        STARTED_AT: ${{ steps.detect.outputs.started-at }}
+      run: |
+        set -euo pipefail
+        python3 "$REPORTER" .jev-review >> "$GITHUB_OUTPUT"
+        cat .jev-review/comment.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment on pull request
+      if: always() && steps.report.outcome == 'success' && inputs.comment == 'true' && github.event.pull_request.number != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        marker='<!-- openapi-semantic-lint-gate-jev -->'
+
+        existing="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+          --jq "[.[] | select(.body | startswith(\"${marker}\"))] | first | .id // empty")"
+
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" \
+            -F body=@.jev-review/comment.md > /dev/null
+          echo "Updated comment ${existing}."
+        else
+          gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
+            -F body=@.jev-review/comment.md > /dev/null
+          echo "Created findings comment."
+        fi
+
+    - name: Upload Jev results
+      if: always() && steps.detect.outputs.found == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: jev-semantic-review
+        path: .jev-review/
+        if-no-files-found: ignore
+        retention-days: 14
+
+    - name: Fail when the gate did not pass
+      if: always() && steps.detect.outputs.found == 'true' && steps.report.outputs.passed != 'true'
+      shell: bash
+      env:
+        ERRORS: ${{ steps.report.outputs.error-count }}
+        WARNINGS: ${{ steps.report.outputs.warning-count }}
+        SKIPPED: ${{ steps.report.outputs.skipped-count }}
+      run: |
+        if [ "${SKIPPED:-0}" != "0" ]; then
+          echo "::error::Jev semantic lint gate failed — at least one specification could not be scored."
+        elif [ -n "${ERRORS:-}" ]; then
+          echo "::error::Jev semantic lint gate failed — ${ERRORS} error(s), ${WARNINGS} warning(s)."
+        else
+          echo "::error::Jev semantic lint gate failed — the review produced no usable result."
+        fi
+        exit 1
