@@ -54,6 +54,8 @@ runs:
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         SPEC_DIR: ${{ inputs.spec-directory }}
+        EVENT_ACTION: ${{ github.event.action }}
+        BEFORE_SHA: ${{ github.event.before }}
       run: |
         set -euo pipefail
         if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
@@ -90,8 +92,40 @@ runs:
           cat .jev-review/specs.txt
         fi
 
+        # A push that touches no candidate spec can reuse the previous review instead of
+        # calling the model again. Unknown history (e.g. a force push) always reviews.
+        reuse=false
+        if [ "$count" -gt 0 ] && [ "$EVENT_ACTION" = "synchronize" ] \
+          && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+          reuse=true
+          while IFS= read -r file; do
+            if [ -n "$SPEC_DIR" ]; then
+              case "$file" in "${SPEC_DIR%/}"/*) reuse=false ;; esac
+            elif printf '%s' "$file" | grep -Eiq '\.(yaml|yml|json)$'; then
+              reuse=false
+            fi
+          done < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
+        fi
+        echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+        [ "$reuse" = false ] || echo "No specification changed in this push — trying to reuse the previous review."
+
+    - name: Reuse the previous review
+      id: reuse
+      if: steps.detect.outputs.found == 'true' && steps.detect.outputs.reuse == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        if run_id="$("${{ github.action_path }}/../scripts/previous-review.sh" jev-semantic-review .jev-review)"; then
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Reusing the review from run $run_id."
+        else
+          echo "No earlier review found — running a full review."
+        fi
+
     - name: Score specifications with Jev
-      if: steps.detect.outputs.found == 'true'
+      if: steps.detect.outputs.found == 'true' && steps.reuse.outputs.run-id == ''
       shell: bash
       env:
         TYPESAFE_API_KEY: ${{ inputs.typesafe-api-key }}
@@ -156,6 +190,8 @@ runs:
       env:
         REPORTER: ${{ github.action_path }}/report.py
         STARTED_AT: ${{ steps.detect.outputs.started-at }}
+        REUSED_RUN: ${{ steps.reuse.outputs.run-id }}
+        RUN_URL_BASE: ${{ github.server_url }}/${{ github.repository }}/actions/runs
       run: |
         set -euo pipefail
         python3 "$REPORTER" .jev-review >> "$GITHUB_OUTPUT"

@@ -86,6 +86,8 @@ runs:
         EXTENSIONS: ${{ inputs.spec-extensions }}
         EXPLICIT_PATHS: ${{ inputs.spec-paths }}
         SPEC_DIR: ${{ inputs.spec-directory }}
+        EVENT_ACTION: ${{ github.event.action }}
+        BEFORE_SHA: ${{ github.event.before }}
       run: |
         set -euo pipefail
         mkdir -p .semantic-review
@@ -138,14 +140,46 @@ runs:
           cat .semantic-review/specs.txt
         fi
 
+        # A push that touches no candidate spec can reuse the previous review instead of
+        # calling the model again. Unknown history (e.g. a force push) always reviews.
+        reuse=false
+        if [ "$count" -gt 0 ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -z "${EXPLICIT_PATHS//[[:space:]]/}" ] \
+          && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+          reuse=true
+          while IFS= read -r file; do
+            if [ -n "$SPEC_DIR" ]; then
+              case "$file" in "${SPEC_DIR%/}"/*) reuse=false ;; esac
+            elif printf '%s' "$file" | grep -Eiq "\.(${ext_pattern})$"; then
+              reuse=false
+            fi
+          done < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
+        fi
+        echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+        [ "$reuse" = false ] || echo "No specification changed in this push — trying to reuse the previous review."
+
+    - name: Reuse the previous review
+      id: reuse
+      if: steps.detect.outputs.found == 'true' && steps.detect.outputs.reuse == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        if run_id="$("${{ github.action_path }}/scripts/previous-review.sh" openapi-semantic-review .semantic-review)"; then
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Reusing the review from run $run_id."
+        else
+          echo "No earlier review found — running a full review."
+        fi
+
     - name: Set up Node.js
-      if: steps.detect.outputs.found == 'true'
+      if: steps.detect.outputs.found == 'true' && steps.reuse.outputs.run-id == ''
       uses: actions/setup-node@v4
       with:
         node-version: "22"
 
     - name: Run semantic review
-      if: steps.detect.outputs.found == 'true'
+      if: steps.detect.outputs.found == 'true' && steps.reuse.outputs.run-id == ''
       uses: anthropics/claude-code-action@v1
       with:
         anthropic_api_key: ${{ inputs.anthropic-api-key }}
@@ -282,6 +316,8 @@ runs:
         WARNINGS: ${{ steps.verdict.outputs.warning-count }}
         FAIL_ON: ${{ inputs.fail-on }}
         STARTED_AT: ${{ steps.detect.outputs.started-at }}
+        REUSED_RUN: ${{ steps.reuse.outputs.run-id }}
+        RUN_URL_BASE: ${{ github.server_url }}/${{ github.repository }}/actions/runs
       run: |
         set -euo pipefail
         out=.semantic-review/comment.md
@@ -315,6 +351,10 @@ runs:
           echo
           echo "⏱️ Ran in ${duration}."
           echo
+          if [ -n "${REUSED_RUN:-}" ]; then
+            echo "♻️ No specification changed in this push — reused the review from [run ${REUSED_RUN}](${RUN_URL_BASE}/${REUSED_RUN})."
+            echo
+          fi
           echo "### Reviewed specifications"
           echo
           while IFS= read -r f; do [ -n "$f" ] && echo "- \`$f\`"; done < .semantic-review/specs.txt

@@ -94,6 +94,10 @@ def main() -> None:
     if started_at:
         elapsed = int(time.time()) - int(started_at)
         lines += [f"⏱️ Ran in {elapsed // 60}m {elapsed % 60:02d}s.", ""]
+    reused_run = os.environ.get("REUSED_RUN")
+    if reused_run:
+        url = f"{os.environ.get('RUN_URL_BASE', '')}/{reused_run}"
+        lines += [f"♻️ No specification changed in this push — reused the review from [run {reused_run}]({url}).", ""]
     lines += ["### Reviewed specifications", ""]
     lines += [f"- `{spec}`" for spec in specs]
     lines += ["", "# Semantic Review Report", ""] + sections

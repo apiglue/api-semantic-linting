@@ -83,6 +83,8 @@ A changed file is reviewed when both hold:
 
 Deleted files are ignored. When nothing matches, the job succeeds without calling the model — so the check can be required on every pull request without slowing unrelated work down.
 
+When a later push to the pull request changes no file under `spec-directory` (or no candidate-extension file when it is empty), the job does not call the model again. It downloads the review artifact from the pull request's latest finished run and reports that verdict. The check therefore stays red while the earlier review's errors remain, and the comment links the reused run. A force push, or no earlier review artifact, falls back to a full review. Reuse needs `actions: read` permission and `upload-artifact: true`.
+
 ## What runs inside
 
 1. `claude-code-action` installs the `apiglue-api-governance` marketplace and the `api-ai-toolkit` plugin into the run, so the plugin's skills and its bundled Spectral ruleset resolve natively.
@@ -116,15 +118,17 @@ Both gates on [`apis/openapi-semantic-traps.json`](apis/openapi-semantic-traps.j
 | | Semantic lint (Claude) | Semantic lint (Jev) |
 |---|---|---|
 | Result | ❌ Blocked | ❌ Blocked |
-| Time shown in comment | 4m 34s | 0m 02s |
-| Whole job, per GitHub | 4m 42s | 11s |
+| Time shown in comment | 4m 34s / 4m 08s | 0m 02s / 0m 01s |
+| Whole job, per GitHub | 4m 42s / 4m 17s | 11s / 10s |
 | Rules fired | 13 | the same 13 |
 | Table rows | 20, one per location | 13, one per rule |
-| Model calls | 31 turns (`claude-sonnet-5`, plus `claude-haiku-5-5`) | 1 request (`jev-1.14.0`) |
-| Tokens | not reported in the log | not recorded in this run (~6k input estimated) |
-| Cost | $0.78 | ~$0.0003 estimated ($0.042 per million input tokens; output is free) |
+| Model calls | 31 / 20 turns (`claude-sonnet-5`, plus `claude-haiku-5-5`) | 1 request (`jev-1.14.0`) |
+| Tokens | not reported by `claude-code-action` | 7,046 input · 314 output |
+| Cost | $0.78 / $0.58 | $0.0003 ($0.042 per million input tokens; output is free) |
+
+Figures with two values come from the two runs; everything else matched across both. The Jev figures come from the second run.
 
 - **Same verdict on every rule.** Both flagged `SEM-001`…`SEM-011`, `SEM-013` and `SEM-014`, and both passed `SEM-012`. Jev's probabilities were all between 0.90 and 1.00; the lowest were `SEM-013` (0.90), `SEM-011` (0.91) and `SEM-005` (0.93).
-- **Jev is about 140× faster.** It makes one API call per spec, and TypeSafe charges for input tokens only.
+- **Jev is about 140× faster and roughly 2,000–2,600× cheaper.** It makes one API call per spec, and TypeSafe charges for input tokens only. Claude's cost varies between runs with the number of turns it takes.
 - **Claude gives exact locations** (`GET /getContactList`, `totalAmount`), recommendations written for each finding, and a corrected copy of the spec. Jev only says which rules fired.
-- **`SEM-007` severity is inconsistent.** The skill marks it as an error, which is how Jev counts it. The Claude gate's prompt treats only `SEM-001`…`SEM-006` as errors, so its comment header showed "9 error(s), 11 warning(s)" while its footer showed "11 · 9".
+- **`SEM-007` severity is inconsistent.** The skill marks it as an error, which is how Jev counts it. The Claude gate's prompt treats only `SEM-001`…`SEM-006` as errors, so its counts are unstable: the first run's header showed "9 error(s), 11 warning(s)" while its footer showed "11 · 9", and the second run's header showed "11 error(s), 9 warning(s)".
