@@ -120,6 +120,9 @@ Both gates on [`apis/openapi-semantic-traps.json`](apis/openapi-semantic-traps.j
 | Whole job, per GitHub | 4m 42s | 11s |
 | Rules fired | 13 | the same 13 |
 | Table rows | 20, one per location | 13, one per rule |
+| Model calls | 31 turns (`claude-sonnet-5`, plus `claude-haiku-5-5`) | 1 request (`jev-1.14.0`) |
+| Tokens | not reported in the log | not recorded in this run (~6k input estimated) |
+| Cost | $0.78 | ~$0.0003 estimated ($0.042 per million input tokens; output is free) |
 
 - **Same verdict on every rule.** Both flagged `SEM-001`…`SEM-011`, `SEM-013` and `SEM-014`, and both passed `SEM-012`. Jev's probabilities were all between 0.90 and 1.00; the lowest were `SEM-013` (0.90), `SEM-011` (0.91) and `SEM-005` (0.93).
 - **Jev is about 140× faster.** It makes one API call per spec, and TypeSafe charges for input tokens only.

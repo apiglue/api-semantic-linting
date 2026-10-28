@@ -192,6 +192,7 @@ runs:
         name: jev-semantic-review
         path: .jev-review/
         if-no-files-found: ignore
+        include-hidden-files: true
         retention-days: 14
 
     - name: Fail when the gate did not pass

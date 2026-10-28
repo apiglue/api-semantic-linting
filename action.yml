@@ -387,6 +387,7 @@ runs:
         name: openapi-semantic-review
         path: .semantic-review/
         if-no-files-found: warn
+        include-hidden-files: true
         retention-days: 14
 
     - name: Fail when the gate did not pass

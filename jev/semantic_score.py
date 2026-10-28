@@ -71,6 +71,7 @@ def combine(request: dict, response: dict) -> dict:
     violation = weighted_sum / total_weight
     return {
         "model": response.get("model"),
+        "usage": response.get("usage"),
         "compliance": round(1 - violation, 3),
         "errors_fired": [r["rule"] for r in rules if r["fired"] and r["severity"] == "error"],
         "warnings_fired": [r["rule"] for r in rules if r["fired"] and r["severity"] == "warning"],
