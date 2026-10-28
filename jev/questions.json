@@ -1,0 +1,290 @@
+{
+  "model": "jev-1.14.0",
+  "questions": {
+    "sem_001_request_body_on_safe_method": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many operations under the HTTP method get, head, or delete define a requestBody?",
+      "criteria": [
+        {
+          "what": "No get, head, or delete operation defines a requestBody",
+          "examples": [
+            "get /orders takes only query parameters",
+            "post /orders defines a requestBody and delete /orders/{id} does not"
+          ]
+        },
+        {
+          "what": "One or more get, head, or delete operations define a requestBody",
+          "examples": [
+            "get /orders/search defines a requestBody containing a filter object",
+            "get /orders and delete /orders/{id} each define a requestBody"
+          ]
+        }
+      ]
+    },
+    "sem_002_content_on_204": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many responses with status 204 define a content block?",
+      "criteria": [
+        {
+          "what": "No 204 response defines content",
+          "examples": [
+            "delete /orders/{id} returns 204 with only a description"
+          ]
+        },
+        {
+          "what": "One or more 204 responses define content",
+          "examples": [
+            "delete /orders/{id} returns 204 with content application/json and a schema",
+            "put /orders/{id} and delete /orders/{id} both return 204 with content application/json"
+          ]
+        }
+      ]
+    },
+    "sem_003_no_security_declared": {
+      "type": "score",
+      "instructions": "Does this OpenAPI specification declare how clients authenticate to its operations?",
+      "criteria": [
+        {
+          "what": "Authentication is declared: paths has no operations, or components.securitySchemes has at least one scheme, or a top-level security array exists",
+          "examples": [
+            "components.securitySchemes.bearerAuth is type http with scheme bearer",
+            "top-level security lists apiKeyAuth"
+          ]
+        },
+        {
+          "what": "Authentication is not declared: paths has at least one operation, components.securitySchemes is absent or empty, and there is no top-level security",
+          "examples": [
+            "the spec has a components.schemas section but no securitySchemes and no top-level security key"
+          ]
+        }
+      ]
+    },
+    "sem_004_secret_in_query": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many parameters with in: query have a name that, lowercased, is exactly one of: password, secret, token, access_token, accesstoken, apikey, api_key, api-key, ssn, credit_card, creditcard?",
+      "criteria": [
+        {
+          "what": "No query parameter has one of the listed sensitive names",
+          "examples": [
+            "query parameters are limit, offset, status",
+            "an Authorization header carries the token",
+            "a query parameter named tokenType is not an exact match"
+          ]
+        },
+        {
+          "what": "One or more query parameters have one of the listed sensitive names",
+          "examples": [
+            "get /orders has a query parameter named api_key",
+            "get /login has query parameters password and token"
+          ]
+        }
+      ]
+    },
+    "sem_005_no_error_response": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many operations document at least one 2xx response but no 4xx response and no default response?",
+      "criteria": [
+        {
+          "what": "Every operation that has a 2xx response also has a 4xx or default response",
+          "examples": [
+            "post /orders documents 201 and 400",
+            "get /orders documents 200 and default"
+          ]
+        },
+        {
+          "what": "One or more operations have a 2xx response with no 4xx and no default response",
+          "examples": [
+            "get /orders/{id} documents only 200 and 500",
+            "get /orders, post /orders and delete /orders/{id} each document only success responses"
+          ]
+        }
+      ]
+    },
+    "sem_006_201_on_read": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many get or head operations document a 201 response?",
+      "criteria": [
+        {
+          "what": "No get or head operation documents a 201 response",
+          "examples": [
+            "get /orders returns 200",
+            "post /orders returns 201"
+          ]
+        },
+        {
+          "what": "One or more get or head operations document a 201 response",
+          "examples": [
+            "get /orders/{id} returns 201",
+            "get /orders and head /orders both return 201"
+          ]
+        }
+      ]
+    },
+    "sem_007_verb_in_path": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many literal path segments (not {param} segments) start with get, create, update, delete, add, remove, fetch, or set immediately followed by an uppercase letter, a hyphen, or an underscore?",
+      "criteria": [
+        {
+          "what": "No literal path segment starts with a verb prefix followed by an uppercase letter, hyphen, or underscore",
+          "examples": [
+            "/orders/{orderId}/items",
+            "/settings and /addresses are nouns, not verb prefixes followed by a separator"
+          ]
+        },
+        {
+          "what": "One or more literal path segments start with a verb prefix followed by an uppercase letter, hyphen, or underscore",
+          "examples": [
+            "/getOrders",
+            "/orders/{id}/delete-item",
+            "/createOrder and /update_order"
+          ]
+        }
+      ]
+    },
+    "sem_008_post_200_not_201": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many post operations document 200 but not 201, sit on a path whose last segment is not a {param}, and have a 200 response schema that is not an array?",
+      "criteria": [
+        {
+          "what": "No post operation matches: every post either documents 201, lacks 200, ends in a {param} segment, or returns an array",
+          "examples": [
+            "post /orders returns 201",
+            "post /orders/search returns 200 with an array schema",
+            "post /orders/{id} returns 200"
+          ]
+        },
+        {
+          "what": "One or more post operations document 200 without 201 on a path not ending in {param}, returning a non-array schema",
+          "examples": [
+            "post /orders returns 200 with an Order object",
+            "post /orders and post /customers each return 200 with a single object"
+          ]
+        }
+      ]
+    },
+    "sem_009_unpaginated_collection": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many get operations sit on a path whose last segment is not a {param}, return a 200 schema that is an array or has an array property, and have no query parameter named page, pageSize, page_size, limit, offset, cursor, pageToken, or page_token?",
+      "criteria": [
+        {
+          "what": "Every get operation returning a collection has a pagination query parameter, or no get operation returns a collection",
+          "examples": [
+            "get /orders returns an array and accepts limit and offset",
+            "get /orders/{id} returns a single object"
+          ]
+        },
+        {
+          "what": "One or more get operations return a collection without any pagination query parameter",
+          "examples": [
+            "get /orders returns an object with an items array and has only a status filter",
+            "get /orders and get /customers both return arrays with no limit, offset, cursor, or page parameter"
+          ]
+        }
+      ]
+    },
+    "sem_010_float_money": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many schema properties of type number or integer with format float or double have a name that, lowercased, equals or ends with price, amount, cost, total, balance, or fee?",
+      "criteria": [
+        {
+          "what": "No monetary-named property uses format float or double",
+          "examples": [
+            "totalAmount is a string",
+            "priceCents is an integer with format int64",
+            "weight is a number with format double"
+          ]
+        },
+        {
+          "what": "One or more monetary-named properties use format float or double",
+          "examples": [
+            "Order.total is type number with format double",
+            "unitPrice is format float and shippingFee is format double"
+          ]
+        }
+      ]
+    },
+    "sem_011_mixed_property_casing": {
+      "type": "score",
+      "instructions": "Across all named schemas in components.schemas of this OpenAPI specification, do the property names mix snake_case (containing an underscore) with camelCase (containing an uppercase letter)?",
+      "criteria": [
+        {
+          "what": "All property names follow one casing convention: none contain an underscore, or none contain an uppercase letter",
+          "examples": [
+            "orderId, createdAt, totalAmount",
+            "order_id, created_at, total_amount",
+            "id, name, status"
+          ]
+        },
+        {
+          "what": "Property names mix conventions: some contain an underscore and others are camelCase with an uppercase letter",
+          "examples": [
+            "Order has orderId and created_at",
+            "Customer uses first_name while Order uses orderId"
+          ]
+        }
+      ]
+    },
+    "sem_012_secured_without_401_403": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, components.securitySchemes is non-empty and an operation's effective security is its own security array, otherwise the top-level security array. How many operations with non-empty effective security document neither a 401 nor a 403 response?",
+      "criteria": [
+        {
+          "what": "No secured operation is missing both 401 and 403, or components.securitySchemes is empty, or no operation has non-empty effective security",
+          "examples": [
+            "get /orders is secured and documents 401",
+            "get /health sets security to an empty array and documents only 200"
+          ]
+        },
+        {
+          "what": "One or more secured operations document neither 401 nor 403",
+          "examples": [
+            "post /orders inherits bearerAuth and documents only 201 and 400",
+            "top-level security applies bearerAuth and get /orders, post /orders, delete /orders/{id} document no 401 or 403"
+          ]
+        }
+      ]
+    },
+    "sem_013_free_form_schema": {
+      "type": "score",
+      "instructions": "In this OpenAPI specification, how many named schemas in components.schemas are type object or have no type, and have no properties, no additionalProperties, and no allOf, oneOf, or anyOf?",
+      "criteria": [
+        {
+          "what": "Every named object schema defines properties, additionalProperties, or a composition keyword",
+          "examples": [
+            "Order defines properties",
+            "Metadata sets additionalProperties to type string",
+            "Pet uses oneOf of Cat and Dog",
+            "OrderStatus is type string with an enum"
+          ]
+        },
+        {
+          "what": "One or more named schemas are fully free-form objects",
+          "examples": [
+            "Metadata is just type: object",
+            "Metadata is type: object and Extras is an empty schema {}"
+          ]
+        }
+      ]
+    },
+    "sem_014_no_versioning": {
+      "type": "score",
+      "instructions": "Does this OpenAPI specification declare an API version in a server URL or a path prefix of the form /v followed by a digit?",
+      "criteria": [
+        {
+          "what": "A version is declared: at least one servers[].url contains a /v<digit> segment, or at least one path key starts with /v<digit>",
+          "examples": [
+            "servers url https://api.example.com/v1",
+            "path keys start with /v2/orders"
+          ]
+        },
+        {
+          "what": "No version is declared: no servers[].url contains a /v<digit> segment and no path key starts with /v<digit>",
+          "examples": [
+            "servers url https://api.example.com and paths /orders, /orders/{id}",
+            "info.version is 1.0.0 but no URL or path contains /v1"
+          ]
+        }
+      ]
+    }
+  }
+}

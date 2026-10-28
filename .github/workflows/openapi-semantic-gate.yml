@@ -4,9 +4,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - "**.yaml"
-      - "**.yml"
-      - "**.json"
+      - "apis/**.yaml"
+      - "apis/**.yml"
+      - "apis/**.json"
 
 # One review per pull request; a new push cancels the in-flight run.
 concurrency:
@@ -21,6 +21,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      actions: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -32,4 +33,25 @@ jobs:
       - uses: ./
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          spec-directory: apis
           fail-on: errors
+
+  semantic-lint-jev:
+    name: Semantic lint (Jev)
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # In consuming repositories replace this with:
+      #   uses: apiglue/api-semantinc-linting/jev@v1
+      - uses: ./jev
+        with:
+          typesafe-api-key: ${{ secrets.TYPESAFE_API_KEY }}
+          spec-directory: apis

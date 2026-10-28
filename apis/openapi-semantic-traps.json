@@ -1,0 +1,626 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Contacts API",
+    "description": "A contacts API that satisfies every structural lint rule while violating a large number of REST design conventions. Used to exercise the semantic reviewer..",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://api.example.com",
+      "description": "Production server."
+    }
+  ],
+  "paths": {
+    "/getContactList": {
+      "get": {
+        "summary": "Get all contacts",
+        "description": "Returns every contact in the directory.",
+        "operationId": "getContactList",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "api_key",
+            "in": "query",
+            "description": "API key identifying the calling application.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "password",
+            "in": "query",
+            "description": "Password of the account whose contacts are returned.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Filter criteria applied to the contact list.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactFilter"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The full contact list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactList"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The contact list was regenerated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts": {
+      "get": {
+        "summary": "List contacts",
+        "description": "Returns a page of contacts.",
+        "operationId": "listContacts",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of contacts to return.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a contact",
+        "description": "Creates a contact in the directory.",
+        "operationId": "createContact",
+        "tags": ["Contacts"],
+        "requestBody": {
+          "description": "The contact to create.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The contact was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/contacts/{addressId}": {
+      "get": {
+        "summary": "Get a contact",
+        "description": "Returns a single contact.",
+        "operationId": "getContact",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "addressId",
+            "in": "path",
+            "description": "Identifier of the contact to return.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested contact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a contact",
+        "description": "Removes a contact from the directory.",
+        "operationId": "deleteContact",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "addressId",
+            "in": "path",
+            "description": "Identifier of the contact to delete.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Reason the contact is being deleted.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteReason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The contact was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/contact/{contactId}/addresses/{addressId}/phone_numbers/{phoneNumberId}": {
+      "patch": {
+        "summary": "Update a phone number",
+        "description": "Updates one phone number belonging to one address of one contact.",
+        "operationId": "updateNestedPhoneNumber",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "description": "Identifier of the contact.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36
+            }
+          },
+          {
+            "name": "addressId",
+            "in": "path",
+            "description": "Identifier of the address.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          },
+          {
+            "name": "phoneNumberId",
+            "in": "path",
+            "description": "Identifier of the phone number.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The phone number fields to change.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneNumber"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated phone number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneNumber"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/contacts/{contactId}/actions": {
+      "post": {
+        "summary": "Run a contact action",
+        "description": "Executes one of the supported contact actions.",
+        "operationId": "runContactAction",
+        "tags": ["Contacts"],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "description": "Identifier of the contact the action applies to.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The action to execute and its arguments.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action result, including failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/delete-contact": {
+      "post": {
+        "summary": "Delete a contact",
+        "description": "Deletes the contact identified in the request body.",
+        "operationId": "deleteContactViaPost",
+        "tags": ["Contacts"],
+        "requestBody": {
+          "description": "Identifier of the contact to delete.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteReason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The deletion outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Contact": {
+        "type": "object",
+        "description": "A directory contact.",
+        "required": ["id", "first_name", "lastName"],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Numeric identifier of the contact."
+          },
+          "first_name": {
+            "type": "string",
+            "description": "Given name of the contact."
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Family name of the contact."
+          },
+          "email_address": {
+            "type": "string",
+            "description": "Primary email address of the contact."
+          },
+          "phoneNumbers": {
+            "type": "array",
+            "description": "Phone numbers on record for the contact.",
+            "items": {
+              "$ref": "#/components/schemas/PhoneNumber"
+            }
+          },
+          "account_balance": {
+            "type": "number",
+            "format": "double",
+            "description": "Outstanding balance on the contact's account."
+          },
+          "totalAmount": {
+            "type": "number",
+            "format": "double",
+            "description": "Total amount invoiced to the contact."
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Creation time as a Unix epoch value in seconds."
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "Last update time as an ISO 8601 string."
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        }
+      },
+      "ContactInput": {
+        "type": "object",
+        "description": "Payload used to create a contact.",
+        "required": ["first_name", "lastName"],
+        "properties": {
+          "first_name": {
+            "type": "string",
+            "description": "Given name of the contact."
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Family name of the contact."
+          },
+          "email_address": {
+            "type": "string",
+            "description": "Primary email address of the contact."
+          }
+        }
+      },
+      "ContactList": {
+        "type": "object",
+        "description": "A collection of contacts.",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "The contacts returned.",
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            }
+          }
+        }
+      },
+      "ContactFilter": {
+        "type": "object",
+        "description": "Criteria used to filter the contact list.",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Free-text term matched against contact names."
+          },
+          "city": {
+            "type": "string",
+            "description": "City the contact lives in."
+          }
+        }
+      },
+      "PhoneNumber": {
+        "type": "object",
+        "description": "A phone number belonging to a contact.",
+        "required": ["number", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identifier of the phone number."
+          },
+          "number": {
+            "type": "string",
+            "description": "The phone number in E.164 form."
+          },
+          "type": {
+            "type": "string",
+            "description": "Kind of phone number.",
+            "enum": ["MOBILE", "HOME", "WORK", "OTHER"]
+          },
+          "is_primary": {
+            "type": "boolean",
+            "description": "Whether this is the contact's primary number."
+          }
+        }
+      },
+      "DeleteReason": {
+        "type": "object",
+        "description": "Explains why a contact is being removed.",
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "description": "Identifier of the contact to delete."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Free-text justification for the deletion."
+          }
+        }
+      },
+      "DeleteReceipt": {
+        "type": "object",
+        "description": "Confirmation returned after a deletion.",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "description": "Whether the contact was removed."
+          },
+          "deleted_at": {
+            "type": "string",
+            "description": "Time the contact was removed."
+          }
+        }
+      },
+      "ActionRequest": {
+        "type": "object",
+        "description": "An action to execute against a contact.",
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "The operation to perform.",
+            "enum": ["MERGE", "ARCHIVE", "RESTORE", "SEND_EMAIL", "DELETE"]
+          },
+          "payload": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        }
+      },
+      "ActionResult": {
+        "type": "object",
+        "description": "The outcome of an action, successful or not.",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the action succeeded."
+          },
+          "error_code": {
+            "type": "string",
+            "description": "Error code when the action failed."
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Human-readable error text when the action failed."
+          }
+        }
+      },
+      "Metadata": {
+        "type": "object",
+        "description": "Arbitrary caller-supplied metadata."
+      },
+      "Error": {
+        "type": "object",
+        "description": "An error payload.",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "description": "Details of the failure.",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Machine-readable error code."
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error text."
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request was malformed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such resource exists.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Contacts",
+      "description": "Operations on directory contacts."
+    }
+  ]
+}

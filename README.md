@@ -54,6 +54,7 @@ With that check required, a pull request cannot be merged until the semantic rev
 | `github-token` | `${{ github.token }}` | Reads the PR diff and posts the findings comment. |
 | `spec-extensions` | `yaml,yml,json` | Extensions considered candidate specifications. |
 | `spec-paths` | `""` | Newline-separated explicit paths. Set this to bypass change detection (e.g. to review a fixed set of specs on a schedule). |
+| `spec-directory` | `""` | Only review changed specs under this directory (e.g. `apis`). Empty reviews the whole repository. |
 | `fail-on` | `errors` | `errors`, or `errors+warnings` for a stricter gate. |
 | `comment` | `true` | Post/update the sticky PR comment. |
 | `upload-artifact` | `true` | Upload the report and corrected spec copies. |
@@ -82,6 +83,8 @@ A changed file is reviewed when both hold:
 
 Deleted files are ignored. When nothing matches, the job succeeds without calling the model — so the check can be required on every pull request without slowing unrelated work down.
 
+When a later push to the pull request changes no file under `spec-directory` (or no candidate-extension file when it is empty), the job does not call the model again. It downloads the review artifact from the pull request's latest finished run and reports that verdict. The check therefore stays red while the earlier review's errors remain, and the comment links the reused run. A force push, or no earlier review artifact, falls back to a full review. Reuse needs `actions: read` permission and `upload-artifact: true`.
+
 ## What runs inside
 
 1. `claude-code-action` installs the `apiglue-api-governance` marketplace and the `api-ai-toolkit` plugin into the run, so the plugin's skills and its bundled Spectral ruleset resolve natively.
@@ -95,4 +98,37 @@ The gate also fails if the review cannot complete (invalid spec, Spectral unavai
 
 ## Local example
 
-`examples/orders-api.yaml` is a specification written to pass the full catalog. Editing it in a pull request against this repository exercises the gate end to end — for a red run, add a `requestBody` to the `GET /orders` operation (`SEM-001`).
+This repository's own workflow lints the specifications under `apis/` with both jobs. `apis/openapi-semantic-traps.json` passes every structural lint rule while violating many semantic rules, so editing it in a pull request exercises both gates end to end with a red run.
+
+## Jev variant
+
+`jev/` is a second action that scores the same `SEM-001`…`SEM-014` catalog with TypeSafe's Jev model instead of Claude. It sends one request per changed spec, with the spec as `state` and the 14 two-level Score questions from `jev/questions.json`. `jev/semantic_score.py` then combines the answers into a weighted compliance score and fails the job when an error rule fires.
+
+```yaml
+      - uses: apiglue/api-semantinc-linting/jev@v1
+        with:
+          typesafe-api-key: ${{ secrets.TYPESAFE_API_KEY }}
+          spec-directory: apis   # optional
+```
+
+## Comparison
+
+Both gates on [`apis/openapi-semantic-traps.json`](apis/openapi-semantic-traps.json) in [PR #2](https://github.com/apiglue/api-semantic-linting/pull/2):
+
+| | Semantic lint (Claude) | Semantic lint (Jev) |
+|---|---|---|
+| Result | ❌ Blocked | ❌ Blocked |
+| Time shown in comment | 4m 34s / 4m 08s | 0m 02s / 0m 01s |
+| Whole job, per GitHub | 4m 42s / 4m 17s | 11s / 10s |
+| Rules fired | 13 | the same 13 |
+| Table rows | 20, one per location | 13, one per rule |
+| Model calls | 31 / 20 turns (`claude-sonnet-5`, plus `claude-haiku-5-5`) | 1 request (`jev-1.14.0`) |
+| Tokens | not reported by `claude-code-action` | 7,046 input · 314 output |
+| Cost | $0.78 / $0.58 | $0.0003 ($0.042 per million input tokens; output is free) |
+
+Figures with two values come from the two runs; everything else matched across both. The Jev figures come from the second run.
+
+- **Same verdict on every rule.** Both flagged `SEM-001`…`SEM-011`, `SEM-013` and `SEM-014`, and both passed `SEM-012`. Jev's probabilities were all between 0.90 and 1.00; the lowest were `SEM-013` (0.90), `SEM-011` (0.91) and `SEM-005` (0.93).
+- **Jev is about 140× faster and roughly 2,000–2,600× cheaper.** It makes one API call per spec, and TypeSafe charges for input tokens only. Claude's cost varies between runs with the number of turns it takes.
+- **Claude gives exact locations** (`GET /getContactList`, `totalAmount`), recommendations written for each finding, and a corrected copy of the spec. Jev only says which rules fired.
+- **`SEM-007` severity is inconsistent.** The skill marks it as an error, which is how Jev counts it. The Claude gate's prompt treats only `SEM-001`…`SEM-006` as errors, so its counts are unstable: the first run's header showed "9 error(s), 11 warning(s)" while its footer showed "11 · 9", and the second run's header showed "11 error(s), 9 warning(s)".
